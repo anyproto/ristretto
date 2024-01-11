@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -21,9 +22,19 @@ package z
 import (
 	"fmt"
 	"os"
+	"sync"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
+
+var fidLock sync.Mutex
+var fidByAddr = map[uintptr]uintptr{}
+
+func getFid(fd *os.File) uintptr {
+	return uintptr(fd.Fd())
+}
 
 func mmap(fd *os.File, write bool, size int64) ([]byte, error) {
 	protect := syscall.PAGE_READONLY
@@ -78,6 +89,9 @@ func mmap(fd *os.File, write bool, size int64) ([]byte, error) {
 	// Use unsafe to turn sl into a []byte.
 	data := *(*[]byte)(unsafe.Pointer(&sl))
 
+	fidLock.Lock()
+	fidByAddr[addr] = getFid(fd)
+	fidLock.Unlock()
 	return data, nil
 }
 
@@ -91,6 +105,26 @@ func madvise(b []byte, readahead bool) error {
 }
 
 func msync(b []byte) error {
-	// TODO: Figure out how to do msync on Windows.
+	var _p0 unsafe.Pointer
+	if len(b) > 0 {
+		_p0 = unsafe.Pointer(&b[0])
+	}
+
+	errno := windows.FlushViewOfFile(uintptr(_p0), uintptr(len(b)))
+	if errno != nil {
+		return os.NewSyscallError("FlushViewOfFile", errno)
+	}
+
+	fidLock.Lock()
+	defer fidLock.Unlock()
+
+	if fid, ok := fidByAddr[uintptr(_p0)]; !ok {
+		os.NewSyscallError("FlushFileBuffers", fmt.Errorf("fid not found for addr: %v", _p0))
+	} else {
+		if err := windows.FlushFileBuffers(windows.Handle(fid)); err != nil {
+			return os.NewSyscallError("FlushFileBuffers", err)
+		}
+	}
+
 	return nil
 }
