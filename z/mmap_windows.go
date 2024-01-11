@@ -29,8 +29,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var fidLock sync.Mutex
-var fidByAddr = map[uintptr]uintptr{}
+type fileInfo struct {
+	writable bool
+	fid      uintptr
+}
+
+var fileInfoByMemoryAddrLock sync.Mutex
+var fileInfoByMemoryAddr = map[uintptr]fileInfo{}
 
 func getFid(fd *os.File) uintptr {
 	return uintptr(fd.Fd())
@@ -89,9 +94,9 @@ func mmap(fd *os.File, write bool, size int64) ([]byte, error) {
 	// Use unsafe to turn sl into a []byte.
 	data := *(*[]byte)(unsafe.Pointer(&sl))
 
-	fidLock.Lock()
-	fidByAddr[addr] = getFid(fd)
-	fidLock.Unlock()
+	fileInfoByMemoryAddrLock.Lock()
+	fileInfoByMemoryAddr[addr] = fileInfo{write, getFid(fd)}
+	fileInfoByMemoryAddrLock.Unlock()
 	return data, nil
 }
 
@@ -108,6 +113,9 @@ func msync(b []byte) error {
 	var _p0 unsafe.Pointer
 	if len(b) > 0 {
 		_p0 = unsafe.Pointer(&b[0])
+	} else {
+		// should never happen but we can ignore it
+		return nil
 	}
 
 	errno := windows.FlushViewOfFile(uintptr(_p0), uintptr(len(b)))
@@ -115,13 +123,16 @@ func msync(b []byte) error {
 		return os.NewSyscallError("FlushViewOfFile", errno)
 	}
 
-	fidLock.Lock()
-	defer fidLock.Unlock()
+	fileInfoByMemoryAddrLock.Lock()
+	defer fileInfoByMemoryAddrLock.Unlock()
 
-	if fid, ok := fidByAddr[uintptr(_p0)]; !ok {
-		os.NewSyscallError("FlushFileBuffers", fmt.Errorf("fid not found for addr: %v", _p0))
+	if fi, ok := fileInfoByMemoryAddr[uintptr(_p0)]; !ok {
+		return os.NewSyscallError("FlushFileBuffers", fmt.Errorf("fid not found for addr: %x", _p0))
 	} else {
-		if err := windows.FlushFileBuffers(windows.Handle(fid)); err != nil {
+		if !fi.writable || fi.fid == ^uintptr(0) {
+			return nil
+		}
+		if err := windows.FlushFileBuffers(windows.Handle(fi.fid)); err != nil {
 			return os.NewSyscallError("FlushFileBuffers", err)
 		}
 	}
