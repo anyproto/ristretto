@@ -17,6 +17,7 @@
 package z
 
 import (
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
@@ -176,6 +177,30 @@ func TestAllocateConcurrent(t *testing.T) {
 		}
 		// fmt.Printf("ptr [%d]: %x %d\n", i, ptr, ptr-last)
 		last = ptr
+	}
+}
+
+// Test function parse
+func TestParse(t *testing.T) {
+	cases := []struct {
+		pos            uint64
+		expectedBufIdx int
+		expectedPosIdx int
+	}{
+		{0, 0, 0},
+		{math.MaxInt16, 0, math.MaxInt16},
+		{math.MaxInt32, 0, math.MaxInt32},
+		// this tests overflow int on 32 bit systems
+		// todo: rewrite to return uint64
+		//{math.MaxInt32 + 1, 0, math.MaxInt32 + 1},
+		//{math.MaxUint64, 4294967295, 4294967295},
+	}
+
+	for _, c := range cases {
+		gotBufIdx, gotPosIdx := parse(c.pos)
+		if gotBufIdx != c.expectedBufIdx || gotPosIdx != c.expectedPosIdx {
+			t.Errorf("parse(%x) == (%d, %d), expected (%d, %d)", c.pos, gotBufIdx, gotPosIdx, c.expectedBufIdx, c.expectedPosIdx)
+		}
 	}
 }
 

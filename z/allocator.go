@@ -138,11 +138,9 @@ func AllocatorFrom(ref uint64) *Allocator {
 }
 
 func parse(pos uint64) (bufIdx, posIdx int) {
-	if pos>>32 > math.MaxInt32 {
-		panic("bufIdx is bigger than MaxInt32")
-	}
-	if pos&0xFFFFFFFF > math.MaxInt32 {
-		panic("posIdx is bigger than MaxInt32")
+	if math.MaxInt32 == math.MaxInt && // if runtime is 32bit
+		pos > math.MaxInt32 {
+		panic("pos overflow MaxInt32")
 	}
 	return int(pos >> 32), int(pos & 0xFFFFFFFF)
 }
@@ -158,7 +156,7 @@ func (a *Allocator) Size() int {
 			continue
 		}
 		sz += uint64(pi)
-		if sz > math.MaxInt32 {
+		if math.MaxInt32 == math.MaxInt && sz > math.MaxInt32 {
 			panic("Size is bigger than MaxInt32")
 		}
 		return int(sz)
