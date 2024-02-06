@@ -138,6 +138,12 @@ func AllocatorFrom(ref uint64) *Allocator {
 }
 
 func parse(pos uint64) (bufIdx, posIdx int) {
+	if pos>>32 > math.MaxInt32 {
+		panic("bufIdx is bigger than MaxInt32")
+	}
+	if pos&0xFFFFFFFF > math.MaxInt32 {
+		panic("posIdx is bigger than MaxInt32")
+	}
 	return int(pos >> 32), int(pos & 0xFFFFFFFF)
 }
 
@@ -145,14 +151,17 @@ func parse(pos uint64) (bufIdx, posIdx int) {
 func (a *Allocator) Size() int {
 	pos := atomic.LoadUint64(&a.compIdx)
 	bi, pi := parse(pos)
-	var sz int
+	var sz uint64
 	for i, b := range a.buffers {
 		if i < bi {
-			sz += len(b)
+			sz += uint64(len(b))
 			continue
 		}
-		sz += pi
-		return sz
+		sz += uint64(pi)
+		if sz > math.MaxInt32 {
+			panic("Size is bigger than MaxInt32")
+		}
+		return int(sz)
 	}
 	panic("Size should not reach here")
 }
@@ -300,7 +309,8 @@ func (a *Allocator) Allocate(sz int) []byte {
 				continue
 			}
 			a.addBufferAt(bufIdx+1, sz)
-			atomic.StoreUint64(&a.compIdx, uint64((bufIdx+1)<<32))
+			bufIdx64 := uint64(bufIdx)
+			atomic.StoreUint64(&a.compIdx, uint64((bufIdx64+1)<<32))
 			a.Unlock()
 			// We added a new buffer. Let's acquire slice the right way by going back to the top.
 			continue
