@@ -190,10 +190,13 @@ func TestParse(t *testing.T) {
 		{0, 0, 0},
 		{math.MaxInt16, 0, math.MaxInt16},
 		{math.MaxInt32, 0, math.MaxInt32},
+		{1 << 32, 1, 0},
+		{2 << 32, 2, 0},
+		{3 << 32, 3, 0},
+
 		// this tests overflow int on 32 bit systems
 		// todo: rewrite to return uint64
-		//{math.MaxInt32 + 1, 0, math.MaxInt32 + 1},
-		//{math.MaxUint64, 4294967295, 4294967295},
+		// {1<<32 - 1, 0, 1<<32 - 1},
 	}
 
 	for _, c := range cases {

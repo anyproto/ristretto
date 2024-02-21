@@ -124,6 +124,7 @@ func (a *Allocator) String() string {
 	}
 	pos := atomic.LoadUint64(&a.compIdx)
 	bi, pi := parse(pos)
+
 	s.WriteString(fmt.Sprintf("bi: %d pi: %d\n", bi, pi))
 	s.WriteString(fmt.Sprintf("Size: %d\n", a.Size()))
 	return s.String()
@@ -138,9 +139,16 @@ func AllocatorFrom(ref uint64) *Allocator {
 }
 
 func parse(pos uint64) (bufIdx, posIdx int) {
-	if math.MaxInt32 == math.MaxInt && // if runtime is 32bit
-		pos > math.MaxInt32 {
-		panic("pos overflow MaxInt32")
+	if math.MaxInt == math.MaxInt32 {
+		// additional sanity check for 32bit systems
+		bufIdx = int(pos >> 32)
+		posIdx = int(pos & 0xFFFFFFFF)
+		// on 32 bit systems, bi and pi can be negative in case they got into (2^31, 2^32-1) range
+		// e.g. pos = 1<<32 -1 will produce 0, 1<<32 - 1
+		if bufIdx < 0 || posIdx < 0 {
+			panic(fmt.Sprintf("pos overflow on 32 bit systems %d", pos))
+		}
+		return bufIdx, posIdx
 	}
 	return int(pos >> 32), int(pos & 0xFFFFFFFF)
 }
